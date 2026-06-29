@@ -1,0 +1,17 @@
+name: FutureAlarm
+options:
+  bundleIdPrefix: com.yourdomain
+  deploymentTarget:
+    iOS: 18.0
+targets:
+  FutureAlarm:
+    type: application
+    platform: iOS
+    sources: FutureAlarm
+    settings:
+      CODE_SIGN_IDENTITY: "Apple Development"
+      CODE_SIGN_STYLE: Automatic
+    info:
+      path: FutureAlarm/Info.plist
+      properties:
+        UILaunchScreen: {}

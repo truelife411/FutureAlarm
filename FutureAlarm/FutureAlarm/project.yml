@@ -1,0 +1,29 @@
+name: FutureAlarm
+options:
+  bundleIdPrefix: com.yourdomain
+  deploymentTarget:
+    iOS: 18.0
+targets:
+  FutureAlarm:
+    type: application
+    platform: iOS
+    sources: FutureAlarm
+    settings:
+      CODE_SIGN_IDENTITY: "Apple Development"
+      DEVELOPMENT_TEAM: "" # You will likely need a development team ID to sign it, but let's try leaving it empty or rely on Xcode automatic signing. 
+      CODE_SIGN_STYLE: Automatic
+    info:
+      path: FutureAlarm/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        UIApplicationShortcutItems:
+          - UIApplicationShortcutItemType: com.futurealarm.addAlarm
+            UIApplicationShortcutItemTitle: 添加闹钟
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeAdd
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default Configuration
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
