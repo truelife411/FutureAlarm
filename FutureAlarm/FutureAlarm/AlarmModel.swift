@@ -2,12 +2,23 @@ import Foundation
 import SwiftUI
 
 // MARK: - 闹钟数据模型
+
+// 💡 重复模式：按星期（默认，兼容旧数据）/ 按每月几号
+enum RepeatMode: Int, Codable {
+    case weekly = 0   // 按星期（0-6）
+    case monthly = 1  // 按每月几号（1-31）
+}
+
 struct Alarm: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var time: Date
     var isOn: Bool
     var label: String
     var repeatDays: [Int]
+    // 💡 重复模式：按星期 / 按每月几号（与 repeatDays/repeatMonthDays 配合使用）
+    var repeatMode: RepeatMode
+    // 💡 按每月几号重复（1-31）。仅当 repeatMode == .monthly 时有效。
+    var repeatMonthDays: [Int]
     // 💡 已跳过的响铃日列表（每个元素均为当天的 startOfDay）。
     // 重复闹钟可累积跳过多次，引擎计算下一次响铃时会跳过这些日子、往后找下一个合法日。
     var skippedDates: [Date]
@@ -16,11 +27,13 @@ struct Alarm: Identifiable, Codable, Equatable {
     var scheduledDate: Date? // 💡 指定日期闹钟：非 nil 表示"未来某天某刻响一次"。此时 repeatDays 必须为空。
     var isQuickAlarm: Bool   // 💡 极速闹钟标记（语言无关，持久化）。true=极速闹钟，复用 scheduledDate 存触发时刻。
 
-    init(time: Date = Date(), isOn: Bool = true, label: String = "闹钟", repeatDays: [Int] = [], skippedDates: [Date] = [], requireMission: Bool = true, soundName: String = "Marimba", scheduledDate: Date? = nil, isQuickAlarm: Bool = false) {
+    init(time: Date = Date(), isOn: Bool = true, label: String = "闹钟", repeatDays: [Int] = [], repeatMode: RepeatMode = .weekly, repeatMonthDays: [Int] = [], skippedDates: [Date] = [], requireMission: Bool = true, soundName: String = "Marimba", scheduledDate: Date? = nil, isQuickAlarm: Bool = false) {
         self.time = time
         self.isOn = isOn
         self.label = label
         self.repeatDays = repeatDays
+        self.repeatMode = repeatMode
+        self.repeatMonthDays = repeatMonthDays
         self.skippedDates = skippedDates
         self.requireMission = requireMission
         self.soundName = soundName
@@ -32,7 +45,7 @@ struct Alarm: Identifiable, Codable, Equatable {
     // 新版本改为 skippedDates（数组）。解码时把旧的 skipNextDate 迁移进来。
     // isQuickAlarm 为后加字段，缺失时回退为 false（兼容旧数据）。
     private enum CodingKeys: String, CodingKey {
-        case id, time, isOn, label, repeatDays, skippedDates
+        case id, time, isOn, label, repeatDays, repeatMode, repeatMonthDays, skippedDates
         case skipNextDate   // 旧字段，仅用于解码兼容
         case requireMission, soundName, scheduledDate, isQuickAlarm
     }
@@ -44,6 +57,9 @@ struct Alarm: Identifiable, Codable, Equatable {
         isOn = try c.decode(Bool.self, forKey: .isOn)
         label = try c.decode(String.self, forKey: .label)
         repeatDays = try c.decode([Int].self, forKey: .repeatDays)
+        // repeatMode / repeatMonthDays 为后加字段，缺失时回退默认值（兼容旧数据）
+        repeatMode = try c.decodeIfPresent(RepeatMode.self, forKey: .repeatMode) ?? .weekly
+        repeatMonthDays = try c.decodeIfPresent([Int].self, forKey: .repeatMonthDays) ?? []
         // 新版本字段优先；缺失时回退到旧字段 skipNextDate（兼容历史数据）
         if let arr = try c.decodeIfPresent([Date].self, forKey: .skippedDates) {
             skippedDates = arr
@@ -65,6 +81,8 @@ struct Alarm: Identifiable, Codable, Equatable {
         try c.encode(isOn, forKey: .isOn)
         try c.encode(label, forKey: .label)
         try c.encode(repeatDays, forKey: .repeatDays)
+        try c.encode(repeatMode, forKey: .repeatMode)
+        try c.encode(repeatMonthDays, forKey: .repeatMonthDays)
         try c.encode(skippedDates, forKey: .skippedDates)
         try c.encode(requireMission, forKey: .requireMission)
         try c.encode(soundName, forKey: .soundName)
@@ -75,13 +93,14 @@ struct Alarm: Identifiable, Codable, Equatable {
     // 💡 是否为"指定日期型"闹钟（一次性，未来某天某刻响）。极速闹钟也复用 scheduledDate，需排除。
     var isDatedAlarm: Bool { scheduledDate != nil && !isQuickAlarm }
 
-    // 💡 是否为重复闹钟（按星期循环）。互斥：重复 / 指定日期 / 单次 / 极速
-    var isRepeatingAlarm: Bool { !repeatDays.isEmpty }
+    // 💡 是否为重复闹钟（按星期或按月循环）。互斥：重复 / 指定日期 / 单次 / 极速
+    var isRepeatingAlarm: Bool { !repeatDays.isEmpty || !repeatMonthDays.isEmpty }
 
     // 💡 闹钟类型文案（用于主界面展示，跟随当前语言）
     var typeLabel: String {
         if isQuickAlarm { return Localization.shared.t("type.quick") }
         if isDatedAlarm { return Localization.shared.t("type.dated") }
+        if repeatMode == .monthly && !repeatMonthDays.isEmpty { return Localization.shared.t("type.monthly") }
         if isRepeatingAlarm { return Localization.shared.t("type.repeating") }
         return Localization.shared.t("type.once")
     }
@@ -180,7 +199,7 @@ class AlarmManager: ObservableObject {
     func disableOneTimeAlarm(id: String) {
         // 先通过 id 取到闹钟，避免后续 sortAlarms() 重排导致 index 失效引发崩溃
         guard let index = alarms.firstIndex(where: { $0.id.uuidString == id }) else { return }
-        guard alarms[index].repeatDays.isEmpty else { return } // 只有单次闹钟才自动关闭
+        guard alarms[index].repeatDays.isEmpty && alarms[index].repeatMonthDays.isEmpty else { return } // 只有单次闹钟才自动关闭
 
         let label = alarms[index].label // 提前快照，防止下面排序后 index 失效
         alarms[index].isOn = false      // 触发 didSet → 保存并重排通知
@@ -191,6 +210,14 @@ class AlarmManager: ObservableObject {
     // 💡 杀手功能：删除闹钟
     func deleteAlarm(id: UUID) {
         alarms.removeAll(where: { $0.id == id })
+    }
+
+    // 💡 清空所有已暂停的闹钟
+    func clearAllPaused() {
+        let count = alarms.filter { !$0.isOn }.count
+        alarms.removeAll(where: { !$0.isOn })
+        sortAlarms()
+        print("🗑️ 已清空 \(count) 个已暂停闹钟")
     }
 
     // 💡 跳过本次（累积式）：把"当前最近一次响铃日"永久加入跳过列表，
@@ -218,13 +245,29 @@ class AlarmManager: ObservableObject {
     }
 
     // 💡 退回上一次跳过：移除最近一次跳过日，恢复到上一个响铃时间
+    // 若被跳过那天的响铃时刻已过（比如跳过了今天上午的闹钟，现在已是下午），则不接受退回
     func undoSkippedDate(of id: UUID) {
         guard let idx = alarms.firstIndex(where: { $0.id == id }) else { return }
         guard !alarms[idx].skippedDates.isEmpty else {
             print("⚠️ 退回失败：该闹钟没有跳过记录")
             return
         }
-        let removed = alarms[idx].skippedDates.removeLast()
+        let removed = alarms[idx].skippedDates.last!
+        // 拼出该跳过日当天的精确响铃时刻 = 那天的年月日 + 闹钟设定的时分
+        let calendar = Calendar.current
+        let dayComp = calendar.dateComponents([.year, .month, .day], from: removed)
+        let timeComp = calendar.dateComponents([.hour, .minute], from: alarms[idx].time)
+        var merged = DateComponents()
+        merged.year = dayComp.year; merged.month = dayComp.month; merged.day = dayComp.day
+        merged.hour = timeComp.hour; merged.minute = timeComp.minute
+        if let ringTime = calendar.date(from: merged), ringTime <= Date() {
+            print("⚠️ 退回失败：被跳过的 \(describe(removed)) 响铃时刻已过，无法退回")
+            // 顺手清理这条已过期的跳过记录
+            alarms[idx].skippedDates.removeLast()
+            sortAlarms()
+            return
+        }
+        alarms[idx].skippedDates.removeLast()
         sortAlarms()
         print("↩️ 已退回跳过：恢复 \(describe(removed))，剩余跳过 \(alarms[idx].skippedDates.count) 次")
     }

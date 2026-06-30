@@ -8,40 +8,43 @@ struct ContentView: View {
     @State private var showingAddView = false
     @State private var editingAlarm: Alarm? = nil
     @State private var showingSettings = false
+    @State private var showClearPausedAlert = false
 
     var body: some View {
         ZStack {
             LiquidBackgroundView()
 
-            ScrollView {
-                VStack(spacing: 24) {
-                    // 顶部标题栏：左齿轮(设置) | 中标题居中 | 右加号
-                    HStack {
-                        Button(action: {
-                            showingSettings = true
-                        }) {
-                            Image(systemName: "gearshape.fill")
-                                .font(.system(size: 26))
-                                .foregroundStyle(.white.opacity(0.8))
-                        }
-                        Spacer()
-                        Text(L("common.alarms"))
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                        Spacer()
-                        Button(action: {
-                            editingAlarm = nil
-                            showingAddView = true
-                        }) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 32))
-                                .foregroundStyle(.white.opacity(0.8))
-                        }
+            VStack(spacing: 0) {
+                // 顶部标题栏：左齿轮(设置) | 中标题居中 | 右加号（固定不滚动）
+                HStack {
+                    Button(action: {
+                        showingSettings = true
+                    }) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 26))
+                            .foregroundStyle(.white.opacity(0.8))
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 40)
+                    Spacer()
+                    Text(L("common.alarms"))
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Button(action: {
+                        editingAlarm = nil
+                        showingAddView = true
+                    }) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 40)
+                .padding(.bottom, 16)
 
-                    // 动态渲染真实闹钟列表（按 今天/未来/已暂停 分组，毛玻璃分隔条隔开）
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // 动态渲染真实闹钟列表（按 今天/未来/已暂停 分组，毛玻璃分隔条隔开）
                     let grouped: [AlarmSection: [Alarm]] = {
                         var dict: [AlarmSection: [Alarm]] = [:]
                         for a in alarmManager.alarms {
@@ -59,7 +62,33 @@ struct ContentView: View {
                         if section != .today && alarms.isEmpty { EmptyView() }
 
                         // 💡 每个组都显示分隔标题（含第一组"今天"）
-                        SectionDivider(title: section.title)
+                        // 已暂停组：右侧显示"全部清空"按钮
+                        if section == .paused && !alarms.isEmpty {
+                            HStack(spacing: 12) {
+                                Text(section.title)
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.white.opacity(0.7))
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.15))
+                                    .frame(height: 1)
+                                Spacer()
+                                Button(action: {
+                                    showClearPausedAlert = true
+                                }) {
+                                    Text(L("home.clearAllPaused"))
+                                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .background(Color.white.opacity(0.15))
+                                        .clipShape(Capsule())
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .padding(.horizontal, 28)
+                            .padding(.top, 8)
+                        } else {
+                            SectionDivider(title: section.title)
+                        }
 
                         if alarms.isEmpty && section == .today {
                             // 今天没有闹钟时给个轻量提示
@@ -82,9 +111,18 @@ struct ContentView: View {
 
                     // 💡 底部留白，避免最后一张卡片被遮挡
                     Color.clear.frame(height: 30)
+                    }
+                    .padding(.bottom, 50)
                 }
-                .padding(.bottom, 50)
             }
+        }
+        .alert(L("home.clearAllPaused"), isPresented: $showClearPausedAlert) {
+            Button(L("common.cancel"), role: .cancel) { }
+            Button(L("home.clearAllPaused"), role: .destructive) {
+                alarmManager.clearAllPaused()
+            }
+        } message: {
+            Text(L("home.confirmClearPaused"))
         }
         .preferredColorScheme(.dark)
         // 💡 同一个 sheet：editingAlarm 为 nil 是新建，非 nil 是编辑

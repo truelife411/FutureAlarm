@@ -114,10 +114,8 @@ struct WakeUpMissionView: View {
                                         SoundManager.shared.stop()
                                         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
 
-                                        // 延迟 0.5 秒后关闭界面
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                            wakeUpState.completeMission()
-                                        }
+                                        // 立即关闭界面
+                                        wakeUpState.completeMission()
                                     } else {
                                         // 没滑够距离，弹回原位
                                         withAnimation(.spring()) {

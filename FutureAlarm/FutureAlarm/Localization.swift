@@ -133,6 +133,8 @@ final class Localization: ObservableObject {
 
         // 主界面
         "home.noAlarmsToday":  [.zh: "今天没有闹钟", .en: "No alarms today"],
+        "home.clearAllPaused": [.zh: "全部清空", .en: "Clear All"],
+        "home.confirmClearPaused": [.zh: "确定要清空所有已暂停的闹钟吗？此操作不可撤销。", .en: "Remove all paused alarms? This cannot be undone."],
 
         // 闹钟分组
         "section.today":       [.zh: "今天", .en: "Today"],
@@ -141,7 +143,9 @@ final class Localization: ObservableObject {
 
         // 闹钟类型（卡片展示 + 添加界面分段）
         "type.once":           [.zh: "单次闹钟", .en: "One-Time"],
-        "type.repeating":      [.zh: "重复闹钟", .en: "Repeating"],
+        "type.repeating":      [.zh: "周重复闹钟", .en: "Weekly"],
+        "type.monthly":        [.zh: "月重复闹钟", .en: "Monthly"],
+        "add.type.repeating":  [.zh: "重复闹钟", .en: "Repeating"],
         "type.dated":          [.zh: "指定日期闹钟", .en: "Date-Specific"],
         "type.quick":          [.zh: "计时闹钟", .en: "Timer"],
 
@@ -152,6 +156,8 @@ final class Localization: ObservableObject {
         "add.time":            [.zh: "时间", .en: "Time"],
         "add.pickDate":        [.zh: "选择日期", .en: "Select Date"],
         "add.repeat":          [.zh: "重复", .en: "Repeat"],
+        "repeat.weekly":       [.zh: "按周", .en: "Weekly"],
+        "repeat.monthly":      [.zh: "按月", .en: "Monthly"],
         "add.label":           [.zh: "标签", .en: "Label"],
         "add.labelPlaceholder":[.zh: "闹钟", .en: "Alarm"],
         "add.mission":         [.zh: "响铃后需右滑关闭闹钟", .en: "Slide right to dismiss after ringing"],
@@ -174,6 +180,7 @@ final class Localization: ObservableObject {
         // 错误提示
         "error.cannotSave":    [.zh: "无法保存", .en: "Cannot Save"],
         "error.needWeekday":   [.zh: "请至少选择一个重复的星期。", .en: "Please select at least one day to repeat."],
+        "error.needMonthDay":  [.zh: "请至少选择一个每月重复的日期。", .en: "Please select at least one date to repeat."],
         "error.needDuration":  [.zh: "请设置倒计时时长（小时或分钟至少填一个）。", .en: "Please set a countdown duration (hours or minutes)."],
         "error.invalidDate":   [.zh: "日期格式无效，请重新选择。", .en: "Invalid date, please choose again."],
         "error.pastTime":      [.zh: "所选时间已过，请选择未来的时间。", .en: "That time has passed, please choose a future time."],

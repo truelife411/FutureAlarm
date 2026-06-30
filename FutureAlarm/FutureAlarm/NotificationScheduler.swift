@@ -152,8 +152,8 @@ class NotificationScheduler {
             return targetDate
         }
 
-        // 方案 A：单次闹钟 (没有设置循环日)
-        if alarm.repeatDays.isEmpty {
+        // 方案 A：单次闹钟 (没有设置循环日，包括按星期和按月)
+        if alarm.repeatDays.isEmpty && alarm.repeatMonthDays.isEmpty {
             // 先假设是今天这个时间
             guard var targetDate = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: now) else {
                 return nil
@@ -173,6 +173,35 @@ class NotificationScheduler {
             }
 
             return targetDate
+        }
+
+        // 方案 B'：按月几号循环闹钟（例如每月1日、10日、20日）
+        if alarm.repeatMode == .monthly {
+            for dayOffset in 0...366 {
+                guard let candidateDate = calendar.date(byAdding: .day, value: dayOffset, to: now) else {
+                    continue
+                }
+                let day = calendar.component(.day, from: candidateDate) // 1-31
+
+                if alarm.repeatMonthDays.contains(day) {
+                    guard let targetDate = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: candidateDate) else {
+                        continue
+                    }
+
+                    // 如果是今天，且时间已经过了，那么这天就不算，继续找下一天
+                    if dayOffset == 0 && targetDate <= now {
+                        continue
+                    }
+
+                    // 💡 检查这一天是否在"已跳过日期"列表里（累积式，可跳过多次）
+                    if alarm.skippedDates.contains(where: { calendar.isDate(targetDate, inSameDayAs: $0) }) {
+                        continue
+                    }
+
+                    return targetDate
+                }
+            }
+            return nil
         }
 
         // 方案 B：循环闹钟 (例如工作日)

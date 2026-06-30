@@ -29,6 +29,9 @@ struct AddAlarmView: View {
 
     // 循环选择状态（星期短名已改用本地化 L("weekday.\(index)")，无需固定数组）
     @State private var selectedDays: Set<Int> = []
+    // 💡 重复模式切换：按星期 / 按每月几号
+    @State private var repeatMode: RepeatMode = .weekly
+    @State private var selectedMonthDays: Set<Int> = []
 
     // 💡 闹钟类型切换 + 指定日期
     @State private var alarmMode: AlarmMode = .once
@@ -145,7 +148,7 @@ struct AddAlarmView: View {
                     Section {
                         Picker("", selection: $alarmMode) {
                             Text(L("type.once")).tag(AlarmMode.once)
-                            Text(L("type.repeating")).tag(AlarmMode.repeating)
+                            Text(L("add.type.repeating")).tag(AlarmMode.repeating)
                             Text(L("type.dated")).tag(AlarmMode.dated)
                             Text(L("type.quick")).tag(AlarmMode.quick)
                         }
@@ -178,7 +181,7 @@ struct AddAlarmView: View {
                         }
                         .listRowBackground(Color.white.opacity(0.1))
                     } else if alarmMode == .repeating {
-                        // 💡 重复型：先选时间，再选星期（星期至少选一个，否则保存时拦截）
+                        // 💡 重复型：先选时间，再选重复规则（至少选一个，否则保存时拦截）
                         Section {
                             DatePicker(L("add.time"), selection: $selectedTime, displayedComponents: .hourAndMinute)
                                 .datePickerStyle(.wheel)
@@ -189,26 +192,60 @@ struct AddAlarmView: View {
                         }
                         .listRowBackground(Color.white.opacity(0.1))
 
+                        // 💡 重复规则：切换器 + 对应选择器
                         Section(header: Text(L("add.repeat")).foregroundColor(.gray)) {
-                            HStack {
-                                ForEach(0..<7) { index in
-                                    Text(L("weekday.\(index)"))
-                                        .font(.system(size: 14, weight: .bold))
-                                        .frame(width: 36, height: 36)
-                                        .background(selectedDays.contains(index) ? Color.purple : Color.white.opacity(0.2))
-                                        .foregroundColor(.white)
-                                        .clipShape(Circle())
-                                        .onTapGesture {
-                                            if selectedDays.contains(index) {
-                                                selectedDays.remove(index)
-                                            } else {
-                                                selectedDays.insert(index)
-                                            }
-                                        }
-                                    if index < 6 { Spacer() }
-                                }
+                            // 按星期 / 按每月几号 切换器
+                            Picker("", selection: $repeatMode) {
+                                Text(L("repeat.weekly")).tag(RepeatMode.weekly)
+                                Text(L("repeat.monthly")).tag(RepeatMode.monthly)
                             }
-                            .padding(.vertical, 8)
+                            .pickerStyle(.segmented)
+                            .listRowBackground(Color.clear)
+                            .padding(.bottom, 4)
+
+                            // 按星期选择器（7 个圆形按钮）
+                            if repeatMode == .weekly {
+                                HStack {
+                                    ForEach(0..<7) { index in
+                                        Text(L("weekday.\(index)"))
+                                            .font(.system(size: 14, weight: .bold))
+                                            .frame(width: 36, height: 36)
+                                            .background(selectedDays.contains(index) ? Color.purple : Color.white.opacity(0.2))
+                                            .foregroundColor(.white)
+                                            .clipShape(Circle())
+                                            .onTapGesture {
+                                                if selectedDays.contains(index) {
+                                                    selectedDays.remove(index)
+                                                } else {
+                                                    selectedDays.insert(index)
+                                                }
+                                            }
+                                        if index < 6 { Spacer() }
+                                    }
+                                }
+                                .padding(.vertical, 8)
+                            } else {
+                                // 按每月几号选择器（31 个圆形按钮，7 列网格）
+                                let columns = Array(repeating: GridItem(.flexible()), count: 7)
+                                LazyVGrid(columns: columns, spacing: 10) {
+                                    ForEach(1...31, id: \.self) { day in
+                                        Text("\(day)")
+                                            .font(.system(size: 14, weight: .bold))
+                                            .frame(width: 36, height: 36)
+                                            .background(selectedMonthDays.contains(day) ? Color.purple : Color.white.opacity(0.2))
+                                            .foregroundColor(.white)
+                                            .clipShape(Circle())
+                                            .onTapGesture {
+                                                if selectedMonthDays.contains(day) {
+                                                    selectedMonthDays.remove(day)
+                                                } else {
+                                                    selectedMonthDays.insert(day)
+                                                }
+                                            }
+                                    }
+                                }
+                                .padding(.vertical, 8)
+                            }
                         }
                         .listRowBackground(Color.clear)
                     } else if alarmMode == .quick {
@@ -374,6 +411,8 @@ struct AddAlarmView: View {
                 requireMission = editing.requireMission
                 selectedSoundName = editing.soundName
                 selectedDays = Set(editing.repeatDays)
+                repeatMode = editing.repeatMode
+                selectedMonthDays = Set(editing.repeatMonthDays)
                 // 根据已有数据回填模式：极速 / 指定日期 / 重复 / 单次 四者互斥
                 // 极速闹钟识别：用专门的判定函数（语言无关），不依赖具体显示文案
                 if editing.isQuickAlarm {
@@ -381,7 +420,7 @@ struct AddAlarmView: View {
                 } else if editing.isDatedAlarm {
                     alarmMode = .dated
                     selectedDate = editing.scheduledDate ?? Date()
-                } else if !editing.repeatDays.isEmpty {
+                } else if !editing.repeatDays.isEmpty || !editing.repeatMonthDays.isEmpty {
                     alarmMode = .repeating
                 } else {
                     alarmMode = .once
@@ -418,11 +457,18 @@ struct AddAlarmView: View {
 
     // 💡 保存前校验
     private func attemptSave() {
-        // 重复闹钟：必须至少选择一个星期，否则不给保存
-        if alarmMode == .repeating && selectedDays.isEmpty {
-            errorMessage = L("error.needWeekday")
-            showError = true
-            return
+        // 重复闹钟：必须至少选择一个重复日，否则不给保存
+        if alarmMode == .repeating {
+            if repeatMode == .weekly && selectedDays.isEmpty {
+                errorMessage = L("error.needWeekday")
+                showError = true
+                return
+            }
+            if repeatMode == .monthly && selectedMonthDays.isEmpty {
+                errorMessage = L("error.needMonthDay")
+                showError = true
+                return
+            }
         }
 
         // 极速闹钟：小时和分钟不能都为 0
@@ -474,7 +520,9 @@ struct AddAlarmView: View {
             let totalSeconds = TimeInterval(quickHours * 3600 + quickMinutes * 60)
             finalScheduledDate = Date().addingTimeInterval(totalSeconds)
         }
-        let finalRepeatDays: [Int] = (alarmMode == .repeating) ? Array(selectedDays).sorted() : []
+        let finalRepeatDays: [Int] = (alarmMode == .repeating && repeatMode == .weekly) ? Array(selectedDays).sorted() : []
+        let finalRepeatMonthDays: [Int] = (alarmMode == .repeating && repeatMode == .monthly) ? Array(selectedMonthDays).sorted() : []
+        let finalRepeatMode: RepeatMode = (alarmMode == .repeating) ? repeatMode : .weekly
         // 标签：用户未输入（空）则回退默认标签；计时闹钟同样支持自定义标签
         let finalLabel: String
         if label.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -490,12 +538,14 @@ struct AddAlarmView: View {
             // 编辑模式：按 id 找到原闹钟并更新字段
             if let idx = alarmManager.alarms.firstIndex(where: { $0.id == editing.id }) {
                 // 单次闹钟 = 没有重复日（含"无重复单次"和"指定日期型"两种），保存后自动重新启用
-                let wasOneTime = alarmManager.alarms[idx].repeatDays.isEmpty
+                let wasOneTime = alarmManager.alarms[idx].repeatDays.isEmpty && alarmManager.alarms[idx].repeatMonthDays.isEmpty
                 alarmManager.alarms[idx].time = finalTime
                 alarmManager.alarms[idx].label = finalLabel
                 alarmManager.alarms[idx].requireMission = requireMission
                 alarmManager.alarms[idx].soundName = selectedSoundName
                 alarmManager.alarms[idx].repeatDays = finalRepeatDays
+                alarmManager.alarms[idx].repeatMode = finalRepeatMode
+                alarmManager.alarms[idx].repeatMonthDays = finalRepeatMonthDays
                 alarmManager.alarms[idx].scheduledDate = finalScheduledDate
                 alarmManager.alarms[idx].isQuickAlarm = finalIsQuick
                 if wasOneTime && !alarmManager.alarms[idx].isOn {
@@ -510,6 +560,8 @@ struct AddAlarmView: View {
                 isOn: true,
                 label: finalLabel,
                 repeatDays: finalRepeatDays,
+                repeatMode: finalRepeatMode,
+                repeatMonthDays: finalRepeatMonthDays,
                 requireMission: requireMission,
                 soundName: selectedSoundName,
                 scheduledDate: finalScheduledDate,

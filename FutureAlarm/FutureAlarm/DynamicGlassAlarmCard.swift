@@ -152,13 +152,12 @@ private struct CardContent: View {
         return str
     }
 
-    // 💡 "下一次响铃"的相对日期文案：今天 / 明天 / 后天 / 周几 / X月X日
+    // 💡 "下一次响铃"的相对日期文案：今天 / 明天 / 后天 / 其他显示具体日期
     // 复用 NotificationScheduler 的权威计算，覆盖单次/重复/指定日期三种类型
+    // 若已无下次响铃（如单次闹钟被跳过），回退到闹钟设定时间，不显示"已跳过"
     private var nextRingDateLabel: String {
         let cal = Calendar.current
-        guard let target = NotificationScheduler.shared.nextTriggerDate(for: alarm) else {
-            return Localization.shared.t("card.skipped")
-        }
+        let target = NotificationScheduler.shared.nextTriggerDate(for: alarm) ?? alarm.time
         let calNow = cal.startOfDay(for: nowTick)
         let calTarget = cal.startOfDay(for: target)
         let dayDiff = cal.dateComponents([.day], from: calNow, to: calTarget).day ?? 0
@@ -166,11 +165,6 @@ private struct CardContent: View {
         case 0:  return Localization.shared.t("card.today")
         case 1:  return Localization.shared.t("card.tomorrow")
         case 2:  return Localization.shared.t("card.dayAfter")
-        case 3...6:
-            let fmt = DateFormatter()
-            fmt.locale = Localization.shared.locale
-            fmt.dateFormat = "EEEE"   // 完整星期名
-            return fmt.string(from: target)
         default:
             let fmt = DateFormatter()
             fmt.locale = Localization.shared.locale
@@ -203,7 +197,7 @@ private struct CardContent: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 5) {
             // Row 1: 日期标签 + 闹钟开关
             HStack(alignment: .top) {
                 Text(nextRingDateLabel)
@@ -312,7 +306,7 @@ private struct CardContent: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(24)
+        .padding(12)
         .background(
             ZStack {
                 RoundedRectangle(cornerRadius: 32, style: .continuous).fill(.ultraThinMaterial)
