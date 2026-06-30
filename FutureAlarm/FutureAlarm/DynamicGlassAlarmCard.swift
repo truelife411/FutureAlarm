@@ -198,11 +198,24 @@ private struct CardContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            // Row 1: 日期标签 + 闹钟开关
+            // Row 1: 日期标签 + 倒计时 + 闹钟开关
             HStack(alignment: .top) {
-                Text(nextRingDateLabel)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundColor(alarm.isOn ? .purple : .purple.opacity(0.5))
+                // 💡 日期标签后接倒计时（中间用 · 分隔），节省一行空间
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(nextRingDateLabel)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundColor(alarm.isOn ? .purple : .purple.opacity(0.5))
+
+                    if alarm.isOn && nextRingDate != nil {
+                        Text("·")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.3))
+
+                        Text(countdownString)
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                }
 
                 Spacer()
 
@@ -275,18 +288,7 @@ private struct CardContent: View {
                 }
             }
 
-            // Row 3: 倒计时
-            if alarm.isOn && nextRingDate != nil {
-                Text(countdownString)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundColor(.purple)
-            } else {
-                Text(" ")
-                    .font(.system(size: 15))
-                    .foregroundColor(.white.opacity(0.3))
-            }
-
-            // Row 4: 标签文案 + 编辑按钮
+            // Row 3: 标签文案 + 编辑按钮
             HStack {
                 Text(tagsString)
                     .font(.system(size: 13, weight: .regular))
