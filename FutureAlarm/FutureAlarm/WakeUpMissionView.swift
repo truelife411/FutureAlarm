@@ -130,5 +130,11 @@ struct WakeUpMissionView: View {
                 .padding(.bottom, 100)
             }
         }
+        .onAppear {
+            // 💡 界面已出现在屏幕上，用户已感知到，立即停止铃声（"进入清醒界面不需要响铃"）
+            // 三条触发路径（前台通知 / 后台引擎 / 点击横幅）的 playAlarmLoop 都早于本 onAppear，
+            // 因此铃声会自然"响一下就停"，界面静默等待用户右滑关闭。
+            SoundManager.shared.stop()
+        }
     }
 }

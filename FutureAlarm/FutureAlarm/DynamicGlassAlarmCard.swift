@@ -67,12 +67,11 @@ struct DynamicGlassAlarmCard: View {
                 .offset(x: offset)
         }
         .contentShape(Rectangle())
-        // 💡 整卡点击：只有在未展开时点击才进入编辑（避免误触）
+        // 💡 点击空白处：仅用于收起左滑展开的按钮，不再进入编辑。
+        // 编辑入口统一收敛到右下角「✎」按钮（见 CardContent Row 3），避免误触。
         .onTapGesture {
             if isOpen {
                 close()
-            } else {
-                onEdit(alarm)
             }
         }
         // 🚨 左滑手势
@@ -153,11 +152,11 @@ private struct CardContent: View {
     }
 
     // 💡 "下一次响铃"的相对日期文案：今天 / 明天 / 后天 / 其他显示具体日期
-    // 复用 NotificationScheduler 的权威计算，覆盖单次/重复/指定日期三种类型
+    // ⚠️ 不再自己调 nextTriggerDate，由 body 计算一次后传入，避免重复扫描 365 天。
     // 若已无下次响铃（如单次闹钟被跳过），回退到闹钟设定时间，不显示"已跳过"
-    private var nextRingDateLabel: String {
+    private func ringDateLabel(nextTrigger: Date?) -> String {
         let cal = Calendar.current
-        let target = NotificationScheduler.shared.nextTriggerDate(for: alarm) ?? alarm.time
+        let target = nextTrigger ?? alarm.time
         let calNow = cal.startOfDay(for: nowTick)
         let calTarget = cal.startOfDay(for: target)
         let dayDiff = cal.dateComponents([.day], from: calNow, to: calTarget).day ?? 0
@@ -174,14 +173,10 @@ private struct CardContent: View {
         }
     }
 
-    // 💡 下一次响铃的精确时刻（覆盖所有类型，复用权威计算）
-    private var nextRingDate: Date? {
-        NotificationScheduler.shared.nextTriggerDate(for: alarm)
-    }
-
     // 💡 倒计时文案，跟随当前语言（中文"还有 2天3小时 响" / 英文"Rings in 2d 3h"）
-    private var countdownString: String {
-        guard let target = nextRingDate else { return "" }
+    // ⚠️ 不再自己读 nextRingDate，由 body 传入，统一基准为 nowTick（避免与日期标签不一致）。
+    private func countdownText(nextTrigger: Date?) -> String {
+        guard let target = nextTrigger else { return "" }
         let secs = target.timeIntervalSince(nowTick)
         if secs <= 0 { return Localization.shared.t("card.ringingSoon") }
         let days = Int(secs) / 86400
@@ -197,21 +192,26 @@ private struct CardContent: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        // 💡 性能优化：一次渲染只调一次 NotificationScheduler.nextTriggerDate(for:)，
+        // 重复闹钟的 365 天扫描成本较高；下游 ringDateLabel / countdownText 全部复用此值。
+        // 同时统一基准为 nowTick，避免日期标签（用实时 Date）与倒计时（用 nowTick）出现 30s 不自洽。
+        let nextTrigger = NotificationScheduler.shared.nextTriggerDate(for: alarm)
+
+        return VStack(alignment: .leading, spacing: 5) {
             // Row 1: 日期标签 + 倒计时 + 闹钟开关
             HStack(alignment: .top) {
                 // 💡 日期标签后接倒计时（中间用 · 分隔），节省一行空间
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(nextRingDateLabel)
+                    Text(ringDateLabel(nextTrigger: nextTrigger))
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundColor(alarm.isOn ? .purple : .purple.opacity(0.5))
 
-                    if alarm.isOn && nextRingDate != nil {
+                    if alarm.isOn && nextTrigger != nil {
                         Text("·")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(.white.opacity(0.3))
 
-                        Text(countdownString)
+                        Text(countdownText(nextTrigger: nextTrigger))
                             .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundColor(.white.opacity(0.5))
                     }
@@ -222,12 +222,11 @@ private struct CardContent: View {
                 Toggle("", isOn: Binding(
                     get: { alarm.isOn },
                     set: { newValue in
+                        // 💡 直接写字段：didSet → handleChange 自动重排 + 持久化 + 重排通知，
+                        //    无需手动 sortAlarms()，也不需要 asyncAfter 延迟重排
                         let targetId = alarm.id
                         if let idx = AlarmManager.shared.alarms.firstIndex(where: { $0.id == targetId }) {
                             AlarmManager.shared.alarms[idx].isOn = newValue
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            AlarmManager.shared.sortAlarms()
                         }
                     }
                 ))

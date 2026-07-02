@@ -50,6 +50,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     var wakeUpState: WakeUpState?
 
     // 当 App 在前台时，如果通知来了，也会直接触发这个方法 (模拟强制弹窗)
+    // 💡 必须按 requireMission 分流，否则非任务闹钟（"点击即关"语义）也会被强弹滑动解锁界面
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
 
         let userInfo = notification.request.content.userInfo
@@ -57,14 +58,31 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         let alarmId = userInfo["alarmId"] as? String ?? ""
         let soundName = userInfo["soundName"] as? String ?? "Marimba"
 
-        // 💡 关键修复：前台时不让系统播通知声音（系统声音无法中途停止，会响满 29s）
-        //    改用 App 内 AVAudioPlayer 循环播放，右滑关闭时可立即 stop()
-        DispatchQueue.main.async {
-            self.wakeUpState?.triggerMission(for: alarmId)
-            SoundManager.shared.playAlarmLoop(soundName: soundName)
+        if requireMission {
+            // 💡 任务闹钟：强弹滑动解锁界面，并改用 App 内 AVAudioPlayer 循环播放，
+            //    右滑关闭时可立即 stop()（系统通知声音无法中途停止，会响满 29s）
+            //    注意：界面 onAppear 会立即停掉铃声，实现"响一下就停"。
+            //    另：界面已显示（轰炸后续通知每 30s 到来一次）时不再重新响铃，保持静默。
+            //    isShowingMission 是 @MainActor 隔离属性，须在主线程读取；
+            //    且必须在 triggerMission 之前读（triggerMission 会把它置 true）。
+            DispatchQueue.main.async {
+                let alreadyShowing = self.wakeUpState?.isShowingMission == true
+                self.wakeUpState?.triggerMission(for: alarmId)
+                if !alreadyShowing {
+                    SoundManager.shared.playAlarmLoop(soundName: soundName)
+                }
+            }
+            // 不传 .sound —— 由 App 内接管声音播放，确保能被立即停止
+            completionHandler([])
+        } else {
+            // 💡 非任务闹钟：与 didReceive 的"点击即关"语义一致——不弹任务界面，
+            //    让系统正常展示横幅 + 播放通知声音。前台时通知不进通知中心、
+            //    用户无法点击关闭，故这里代为关闭单次闹钟（重复闹钟内部已判断不动）
+            DispatchQueue.main.async {
+                AlarmManager.shared.disableOneTimeAlarm(id: alarmId)
+            }
+            completionHandler([.banner, .sound, .list])
         }
-        // 不传 .sound —— 由 App 内接管声音播放，确保能被立即停止
-        completionHandler([])
     }
 
     // 当用户点击了通知横幅时触发
@@ -78,9 +96,15 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         if requireMission {
             // 💡 点通知进入 App：此时系统已停止它自己的声音，改由 App 内 AVAudioPlayer 接管循环播放
             //    这样右滑关闭时才能立即停止（系统声音无法中途停止）
+            //    注意：界面 onAppear 会立即停掉铃声，实现"响一下就停"；
+            //    界面已显示则保持静默（与 willPresent 一致）。
+            //    isShowingMission 须在主线程读、且在 triggerMission 之前读。
             DispatchQueue.main.async {
+                let alreadyShowing = self.wakeUpState?.isShowingMission == true
                 self.wakeUpState?.triggerMission(for: alarmId)
-                SoundManager.shared.playAlarmLoop(soundName: soundName)
+                if !alreadyShowing {
+                    SoundManager.shared.playAlarmLoop(soundName: soundName)
+                }
             }
         } else {
             // 非任务闹钟：横幅点击直接关闭单次闹钟即可，无需接管声音

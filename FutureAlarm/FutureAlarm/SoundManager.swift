@@ -1,5 +1,55 @@
 import Foundation
 import AVFoundation
+import MediaPlayer
+
+// MARK: - 系统音量管理器（闹钟响铃时临时提升系统音量，关闹钟后恢复）
+final class VolumeManager {
+    static let shared = VolumeManager()
+
+    private let volumeView = MPVolumeView()
+    private var savedVolume: Float?
+    private var isBoosted = false
+
+    private init() {}
+
+    /// 把系统音量临时提升到用户设定的闹钟音量（或最大），绕过物理音量键的限制
+    func boost() {
+        guard !isBoosted else { return }
+        let current = AVAudioSession.sharedInstance().outputVolume
+        savedVolume = current
+        isBoosted = true
+
+        let target: Float = {
+            let v = UserDefaults.standard.float(forKey: "AlarmVolume")
+            return (v > 0.01) ? v : 1.0
+        }()
+        // 当前音量已经 ≥ 目标则无需调整
+        if current >= target - 0.01 { return }
+
+        setSystemVolume(target)
+        print("🔊 系统音量已临时提升: \(String(format: "%.0f", current * 100))% → \(String(format: "%.0f", target * 100))%")
+    }
+
+    /// 恢复到闹钟响铃前的音量
+    func restore() {
+        guard isBoosted, let saved = savedVolume else { return }
+        isBoosted = false
+        savedVolume = nil
+        setSystemVolume(saved)
+        print("🔊 系统音量已恢复: \(String(format: "%.0f", saved * 100))%")
+    }
+
+    private func setSystemVolume(_ volume: Float) {
+        guard let slider = volumeView.subviews.first(where: { $0 is UISlider }) as? UISlider else {
+            print("⚠️ 无法找到 MPVolumeView 滑块")
+            return
+        }
+        // 异步放到下一个 runloop，避免在 MPVolumeView 还没布局完时设置失败
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            slider.value = max(0, min(1, volume))
+        }
+    }
+}
 
 // MARK: - 铃声定义
 struct AlarmSound: Identifiable, Equatable {
@@ -74,7 +124,9 @@ class SoundManager: ObservableObject {
             if interruptionType == .ended {
                 // 中断结束，如果后台引擎在运行就重启保活
                 print("🔄 AudioSession 中断结束，恢复静音保活")
-                self.startSilentKeepAlive()
+                Task { @MainActor in
+                    self.startSilentKeepAlive()
+                }
             }
         }
     }
@@ -124,6 +176,8 @@ class SoundManager: ObservableObject {
         audioPlayer?.stop()
         audioPlayer = nil
         currentlyPlayingId = nil
+        // 💡 停止响铃时恢复系统音量
+        VolumeManager.shared.restore()
     }
 
     // 💡 闹钟响铃：循环播放指定铃声（numberOfLoops = -1 无限循环），可被 stop() 立即停止
@@ -146,8 +200,12 @@ class SoundManager: ObservableObject {
                 try? AVAudioSession.sharedInstance().setActive(true)
             }
 
+            // 💡 响铃时临时提升系统音量到用户设定值，关闹钟后恢复
+            VolumeManager.shared.boost()
+
             let newPlayer = try AVAudioPlayer(contentsOf: url)
             newPlayer.numberOfLoops = -1  // 无限循环
+            newPlayer.volume = 1.0         // AVAudioPlayer 自身满音量，实际响度由系统音量决定
 
             // 先启动闹钟音频，再停静音保活 —— 零间隙切换，系统不会挂起 App
             audioPlayer?.stop()

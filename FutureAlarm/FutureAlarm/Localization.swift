@@ -130,6 +130,10 @@ final class Localization: ObservableObject {
         "settings.timeFormat.12":    [.zh: "12 小时制", .en: "12-Hour"],
         "settings.timeFormat.24":    [.zh: "24 小时制", .en: "24-Hour"],
         "settings.defaultSound":     [.zh: "默认铃声", .en: "Default Sound"],
+        "settings.criticalAlert":    [.zh: "静音模式下也响铃", .en: "Ring in Silent Mode"],
+        "settings.criticalAlertDesc":[.zh: "开启后，即使手机处于静音/勿扰模式，闹钟也会响铃。需要系统授权。", .en: "When enabled, alarms will ring even in Silent or Do Not Disturb mode. System permission required."],
+        "settings.alarmVolume":      [.zh: "闹钟音量", .en: "Alarm Volume"],
+        "settings.alarmVolumeDesc":  [.zh: "设置闹钟响铃时的音量大小，独立于系统媒体音量。", .en: "Set alarm ring volume, independent of system media volume."],
 
         // 主界面
         "home.noAlarmsToday":  [.zh: "今天没有闹钟", .en: "No alarms today"],

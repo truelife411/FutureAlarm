@@ -144,7 +144,11 @@ struct ContentView: View {
                 openAddAlarmIfPending()
             }
             // App 启动时请求通知权限并重排一次
-            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+            var options: UNAuthorizationOptions = [.alert, .sound, .badge]
+            if AlarmSettings.supportsCriticalAlerts {
+                options.insert(.criticalAlert)
+            }
+            UNUserNotificationCenter.current().requestAuthorization(options: options) { granted, _ in
                 if granted {
                     DispatchQueue.main.async {
                         AlarmManager.shared.rescheduleAllNotifications()
@@ -216,6 +220,10 @@ struct SettingsView: View {
     // 💡 默认铃声：本地 State，进入界面时从 UserDefaults 读取，改动即时持久化
     @State private var defaultSoundId: String = AlarmSound.defaultSoundId()
 
+    // 💡 Critical Alert & 音量设置（本地 State，改动即时持久化）
+    @State private var useCriticalAlerts: Bool = AlarmSettings.shared.useCriticalAlerts
+    @State private var alarmVolume: Double = Double(AlarmSettings.shared.alarmVolume)
+
     var body: some View {
         NavigationView {
             ZStack {
@@ -276,6 +284,40 @@ struct SettingsView: View {
                                 Text(AlarmSound.find(byId: defaultSoundId).localizedDisplayName)
                                     .foregroundColor(.gray)
                             }
+                        }
+                    }
+                    .listRowBackground(Color.white.opacity(0.1))
+
+                    // 💡 静音模式响铃（Critical Alert）—— 仅付费开发者账号可见
+                    if AlarmSettings.supportsCriticalAlerts {
+                        Section(header: Text(L("settings.criticalAlert")).foregroundColor(.gray),
+                                footer: Text(L("settings.criticalAlertDesc")).foregroundColor(.gray.opacity(0.6))) {
+                            Toggle(L("settings.criticalAlert"), isOn: $useCriticalAlerts)
+                                .tint(.purple)
+                                .foregroundColor(.white)
+                                .onChange(of: useCriticalAlerts) { newValue in
+                                    AlarmSettings.shared.useCriticalAlerts = newValue
+                                }
+                        }
+                        .listRowBackground(Color.white.opacity(0.1))
+                    }
+
+                    // 💡 闹钟音量（独立于系统音量）
+                    Section(header: Text(L("settings.alarmVolume")).foregroundColor(.gray),
+                            footer: Text(L("settings.alarmVolumeDesc")).foregroundColor(.gray.opacity(0.6))) {
+                        HStack {
+                            Image(systemName: alarmVolume <= 0.1 ? "speaker.slash.fill" :
+                                            alarmVolume <= 0.5 ? "speaker.wave.1.fill" : "speaker.wave.3.fill")
+                                .foregroundColor(.purple)
+                            Slider(value: $alarmVolume, in: 0.0...1.0, step: 0.05)
+                                .tint(.purple)
+                                .onChange(of: alarmVolume) { newValue in
+                                    AlarmSettings.shared.alarmVolume = Float(newValue)
+                                }
+                            Text("\(Int(alarmVolume * 100))%")
+                                .font(.system(size: 14, weight: .medium, design: .rounded))
+                                .foregroundColor(.white)
+                                .frame(width: 44, alignment: .trailing)
                         }
                     }
                     .listRowBackground(Color.white.opacity(0.1))

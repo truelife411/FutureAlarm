@@ -64,7 +64,20 @@ class NotificationScheduler {
                 // 文件名必须与 Sounds 目录下的文件一致
                 let soundFileName = "\(alarm.soundName).caf"
                 if Bundle.main.url(forResource: alarm.soundName, withExtension: "caf") != nil {
-                    content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: soundFileName))
+                    // 💡 Critical Alert：如果用户开启了"静音模式响铃"，使用 criticalSound 绕过静音开关。
+                    // 没有 entitlement 时自动退化为普通通知声音（不崩溃）。
+                    // 直接读 UserDefaults 避免跨 actor 隔离问题。
+                    let useCritical = UserDefaults.standard.object(forKey: "UseCriticalAlerts") as? Bool ?? true
+                    let volume = UserDefaults.standard.float(forKey: "AlarmVolume")
+                    let alarmVolume: Float = (volume > 0.01) ? volume : 1.0
+                    if #available(iOS 12.0, *), useCritical {
+                        content.sound = UNNotificationSound.criticalSoundNamed(
+                            UNNotificationSoundName(rawValue: soundFileName),
+                            withAudioVolume: alarmVolume
+                        )
+                    } else {
+                        content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: soundFileName))
+                    }
                 } else {
                     // 如果找不到文件，回退到系统默认
                     content.sound = UNNotificationSound.default

@@ -551,7 +551,8 @@ struct AddAlarmView: View {
                 if wasOneTime && !alarmManager.alarms[idx].isOn {
                     alarmManager.alarms[idx].isOn = true
                 }
-                alarmManager.sortAlarms()
+                // 💡 上面任意一次字段写入都会触发 didSet → handleChange 自动重排 + 持久化 + 重排通知，
+                //    无需手动 sortAlarms()
             }
         } else {
             // 新建模式
@@ -567,8 +568,7 @@ struct AddAlarmView: View {
                 scheduledDate: finalScheduledDate,
                 isQuickAlarm: finalIsQuick
             )
-            alarmManager.alarms.append(newAlarm)
-            alarmManager.sortAlarms()
+            alarmManager.alarms.append(newAlarm)   // didSet → handleChange 自动重排
         }
     }
 }
